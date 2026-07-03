@@ -41,6 +41,7 @@
 
 package org.graalvm.buildtools.gradle
 
+import org.gradle.util.GradleVersion
 import org.graalvm.buildtools.gradle.fixtures.AbstractFunctionalTest
 import spock.lang.Ignore
 import spock.lang.IgnoreIf
@@ -50,6 +51,27 @@ import spock.lang.Requires
 import java.nio.file.Files
 
 class JavaApplicationFunctionalTest extends AbstractFunctionalTest {
+    @Issue("https://github.com/graalvm/native-build-tools/issues/900")
+    @Requires({
+        def currentVersion = System.getProperty("gradle.test.version", GradleVersion.current().version)
+        if (currentVersion == "current") {
+            currentVersion = GradleVersion.current().version
+        }
+        GradleVersion.version(currentVersion).baseVersion >= GradleVersion.version("9.6")
+    })
+    def "does not use deprecated Project dependency notation"() {
+        given:
+        withSample("java-application")
+
+        when:
+        run 'help', '--warning-mode=fail'
+
+        then:
+        tasks {
+            succeeded ':help'
+        }
+    }
+
     @Issue("https://github.com/graalvm/native-build-tools/issues/855")
     def "does not resolve runtime classpath during configuration when dependencies change after evaluate"() {
         given:

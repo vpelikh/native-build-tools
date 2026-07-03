@@ -952,7 +952,8 @@ public class NativeImagePlugin implements Plugin<Project> {
                 }
             });
         });
-        compileOnly.getDependencies().add(project.getDependencies().create(project));
+        // Native-image classpaths must model the current project through Gradle's supported dependency APIs. §gradle/FS-plugin-model.
+        compileOnly.getDependencies().add(project.getDependencies().project(Collections.singletonMap("path", project.getPath())));
     }
 
     private NativeImageOptions createMainOptions(GraalVMExtension graalExtension, Project project) {
