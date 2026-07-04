@@ -55,7 +55,7 @@ jobs:
         uses: ./.github/actions/prepare-environment
         with:
           java-version: ${{ matrix.java-version }}
-          graal-java-version: '21'
+          graal-java-version: '25'
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: "❓ Check and test the plugin"
         run: ./gradlew :native-gradle-plugin:functionalTest -DgradleVersion="${{ matrix.gradle-version }}" --tests ${{ matrix.test }}
@@ -101,7 +101,7 @@ jobs:
         uses: ./.github/actions/prepare-environment
         with:
           java-version: ${{ matrix.java-version }}
-          graal-java-version: '21'
+          graal-java-version: '25'
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: "❓ Check and test the plugin with configuration cache"
         run: ./gradlew :native-gradle-plugin:configCacheFunctionalTest -DgradleVersion="${{ matrix.gradle-config-cache-version }}" --tests ${{ matrix.test }}
@@ -128,7 +128,7 @@ jobs:
         uses: ./.github/actions/prepare-environment
         with:
           java-version: ${{ matrix.java-version }}
-          graal-java-version: '21'
+          graal-java-version: '25'
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: "❓ Unit tests and inspections"
         run: ./gradlew :native-gradle-plugin:test :native-gradle-plugin:inspections
