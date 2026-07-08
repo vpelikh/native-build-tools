@@ -1,5 +1,6 @@
 package org.graalvm.buildtools.maven
 
+import com.github.openjson.JSONObject
 
 import java.util.regex.Pattern
 
@@ -81,6 +82,7 @@ class JavaApplicationWithResourcesFunctionalTest extends AbstractGraalVMMavenFun
         given:
 //        withDebug()
         withSample("java-application-with-resources")
+        configureDynamicMainResourceLookup()
 
         List<String> options = []
         if (detection) {
@@ -97,35 +99,130 @@ class JavaApplicationWithResourcesFunctionalTest extends AbstractGraalVMMavenFun
         }
 
         when:
-        mvn(['-Pnative', '-DquickBuild', 'test', *options])
+        mvn(['-Pnative', '-DquickBuild', '-DuseArgFile=true', 'test', *options])
 
         then:
         buildSucceeded
 
         and:
-        matches(file("target/native/generated/generateTestResourceConfig/resource-config.json").text, '''{
-  "resources": {
-    "includes": [
-      {
-        "pattern": "\\\\Qmessage.txt\\\\E"
-      },
-      {
-        "pattern": "\\\\Qorg/graalvm/demo/expected.txt\\\\E"
-      }
-    ],
-    "excludes": []
-  },
-  "bundles": []
-}''')
+        // Autodetection scans processed main and test outputs, not raw resource sources. §FS-resources-and-metadata.1.
+        assertResourcePatterns(file("target/native/generated/generateTestResourceConfig/resource-config.json"), expectedPatterns)
+
+        and: "native:test uses Maven build outputs without adding raw resource directories"
+        def argsFiles = file("target/tmp").listFiles().findAll {
+            it.name.startsWith("native-image-") && it.name.endsWith(".args")
+        }
+        argsFiles.size() == 1
+        def nativeImageArguments = normalizePaths(argsFiles.first().text)
+        nativeImageArguments.contains(normalizePaths(file("target/classes").absolutePath))
+        nativeImageArguments.contains(normalizePaths(file("target/test-classes").absolutePath))
+        !nativeImageArguments.contains(normalizePaths(file("src/main/resources").absolutePath))
+        !nativeImageArguments.contains(normalizePaths(file("src/test/resources").absolutePath))
 
         where:
-        detection | includedPatterns                                                               | restrictToModules | detectionExclusionPatterns
-        false     | [Pattern.quote("message.txt"), Pattern.quote("org/graalvm/demo/expected.txt")] | false             | []
-        true      | []                                                                             | false             | ["META-INF/.*", "junit-platform-unique-ids.*"]
-        true      | []                                                                             | true              | ["META-INF/.*", "junit-platform-unique-ids.*"]
+        detection | includedPatterns                                                               | restrictToModules | detectionExclusionPatterns                         || expectedPatterns
+        false     | [Pattern.quote("message.txt"), Pattern.quote("org/graalvm/demo/expected.txt")] | false             | []                                                 || [Pattern.quote("message.txt"), Pattern.quote("org/graalvm/demo/expected.txt")]
+        true      | []                                                                             | false             | ["META-INF/.*", "junit-platform-unique-ids.*"]     || [Pattern.quote("message.txt"), Pattern.quote("org/graalvm/demo/expected.txt")]
+        true      | []                                                                             | true              | ["META-INF/.*", "junit-platform-unique-ids.*"]     || [Pattern.quote("message.txt"), Pattern.quote("org/graalvm/demo/expected.txt")]
+    }
+
+    def "test resource autodetection follows Maven's processed outputs"() {
+        given:
+        withSample("java-application-with-resources")
+        configureDynamicMainResourceLookup()
+        configureProcessedTestResources()
+
+        when:
+        mvn '-Pnative', '-DskipNativeTests', '-Dresources.autodetection.enabled=true',
+                '-Dresources.autodetection.restrictToModuleDependencies=true',
+                '-Dresources.autodetection.detectionExclusionPatterns=META-INF/.*,junit-platform-unique-ids.*',
+                'test'
+
+        then:
+        buildSucceeded
+        file("target/test-classes/generated-only.txt").isFile()
+        !file("target/test-classes/excluded-source-only.txt").exists()
+
+        and: "only resources that Maven put in the processed test output are detected"
+        assertResourcePatterns(file("target/native/generated/generateTestResourceConfig/resource-config.json"), [
+                Pattern.quote("message.txt"),
+                Pattern.quote("org/graalvm/demo/expected.txt"),
+                Pattern.quote("generated-only.txt")
+        ])
+    }
+
+    private void configureDynamicMainResourceLookup() {
+        def source = file("src/main/java/org/graalvm/demo/Application.java")
+        def staticLookup = 'Application.class.getResourceAsStream("/message.txt")'
+        def dynamicLookup = 'Application.class.getResourceAsStream(System.getProperty("org.graalvm.buildtools.test.resource", "/message.txt"))'
+        assert source.text.contains(staticLookup)
+        source.text = source.text.replace(staticLookup, dynamicLookup)
+    }
+
+    private void configureProcessedTestResources() {
+        def excluded = file("src/test/resources/excluded-source-only.txt")
+        excluded.parentFile.mkdirs()
+        excluded.text = "must not be detected"
+
+        def generated = file("src/generated-test-resources/generated-only.txt")
+        generated.parentFile.mkdirs()
+        generated.text = "must be detected"
+
+        def pom = file("pom.xml")
+        def buildStart = '''    <build>
+        <finalName>${project.artifactId}</finalName>
+        <plugins>'''
+        def configuredBuildStart = '''    <build>
+        <finalName>${project.artifactId}</finalName>
+        <testResources>
+            <testResource>
+                <directory>src/test/resources</directory>
+                <excludes>
+                    <exclude>excluded-source-only.txt</exclude>
+                </excludes>
+            </testResource>
+        </testResources>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.3.1</version>
+                <executions>
+                    <execution>
+                        <id>copy-generated-test-resources</id>
+                        <phase>process-test-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.testOutputDirectory}</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>src/generated-test-resources</directory>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>'''
+        assert pom.text.contains(buildStart)
+        pom.text = pom.text.replace(buildStart, configuredBuildStart)
+    }
+
+    private static void assertResourcePatterns(File configFile, List<String> expectedPatterns) {
+        def config = new JSONObject(configFile.text)
+        def resources = config.getJSONObject("resources")
+        def actualPatterns = resources.getJSONArray("includes").iterator().collect { it.getString("pattern") } as Set
+        assert actualPatterns == expectedPatterns as Set
+        assert resources.getJSONArray("excludes").isEmpty()
+        assert config.getJSONArray("bundles").isEmpty()
     }
 
     private static String joinForCliArg(List<String> patterns) {
         patterns.join(",")
+    }
+
+    private static String normalizePaths(String value) {
+        value.replace('\\\\', '\\').replace('\\', '/')
     }
 }
