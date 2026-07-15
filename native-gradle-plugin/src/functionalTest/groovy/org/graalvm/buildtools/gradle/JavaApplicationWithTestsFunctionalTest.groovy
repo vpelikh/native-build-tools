@@ -202,6 +202,25 @@ class JavaApplicationWithTestsFunctionalTest extends AbstractFunctionalTest {
         junitVersion = System.getProperty('versions.junit')
     }
 
+    // Protects custom native-test source-set classpath wiring. §FS-native-tests.1.1.
+    @Issue("https://github.com/graalvm/native-build-tools/issues/702")
+    @Unroll("custom test image classpath follows custom source set with JUnit Platform #junitVersion")
+    def "custom test image classpath follows custom source set"() {
+        given:
+        withSample("java-application-with-custom-tests")
+
+        when:
+        run 'dependencies', '--configuration', 'nativeImageIntegTestClasspath'
+
+        then:
+        outputContains "org.junit.jupiter:junit-jupiter"
+        outputContains "org.junit.platform:junit-platform-launcher"
+        outputContains "org.graalvm.buildtools:junit-platform-native"
+
+        where:
+        junitVersion = System.getProperty('versions.junit')
+    }
+
     @Issue("https://github.com/graalvm/native-build-tools/issues/77")
     @Unroll("can register a custom test image with JUnit Platform #junitVersion")
     def "can register a custom test image"() {
