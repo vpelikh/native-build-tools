@@ -97,6 +97,21 @@ class JavaApplicationWithAgentFunctionalTest extends AbstractGraalVMMavenFunctio
         outputDoesNotContain "containers found"
     }
 
+    // Verifies agent output paths with spaces remain one JVM argument through Maven test runners. §FS-tracing-agent.3.
+    @Issue("https://github.com/graalvm/native-build-tools/issues/485")
+    def "test agent works from a project directory with spaces"() {
+        given:
+        withSpacesInProjectDir()
+        withSample("java-application-with-reflection")
+
+        when:
+        mvn '-Pnative', '-DquickBuild', 'test', '-Dagent=true', '-DskipNativeTests'
+
+        then:
+        buildSucceeded
+        metadataExistsAt("target/native/agent-output/test/")
+    }
+
     def "test agent with metadata copy task"() {
         given:
         withSample("java-application-with-reflection")
