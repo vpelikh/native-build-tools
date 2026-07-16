@@ -66,10 +66,11 @@ dependencies {
 configurations {
     nativeImageClasspath.extendsFrom(graalImplementation)
 }
-// end::extra-sourceset[]
 
 graalvmNative {
-    binaries.all {
-        buildArgs.add("--features=org.graalvm.demo.ApplicationFeature")
+    binaries.main {
+        buildArgs.add('-H:+UnlockExperimentalVMOptions')
+        buildArgs.add('-H:Features=org.graalvm.demo.ApplicationFeature')
     }
 }
+// end::extra-sourceset[]
