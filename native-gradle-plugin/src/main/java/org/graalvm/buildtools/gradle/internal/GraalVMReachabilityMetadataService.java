@@ -90,11 +90,15 @@ public abstract class GraalVMReachabilityMetadataService implements BuildService
     public interface Params extends BuildServiceParameters {
         Property<Integer> getBackoffMaxRetries();
 
+        Property<Boolean> getEnabled();
+
         Property<Integer> getInitialBackoffMillis();
 
         Property<LogLevel> getLogLevel();
 
         Property<URI> getUri();
+
+        Property<String> getRepositoryDescription();
 
         DirectoryProperty getCacheDir();
     }
@@ -102,6 +106,10 @@ public abstract class GraalVMReachabilityMetadataService implements BuildService
     public GraalVMReachabilityMetadataService() throws URISyntaxException {
         URI uri = getParameters().getUri().get();
         this.repository = newRepository(uri);
+        if (getParameters().getEnabled().get()) {
+            // Normal Gradle output exposes the enabled repository selection. §FS-resources-and-metadata.3.
+            GraalVMLogger.of(LOGGER).lifecycle("Using GraalVM reachability metadata repository " + getParameters().getRepositoryDescription().get());
+        }
     }
 
     private GraalVMReachabilityMetadataRepository newRepository(URI uri) throws URISyntaxException {
