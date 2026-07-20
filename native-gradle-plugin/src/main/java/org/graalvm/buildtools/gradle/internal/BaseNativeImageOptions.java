@@ -101,6 +101,7 @@ public abstract class BaseNativeImageOptions implements NativeImageOptions {
     private final ObjectFactory objects;
     private final ProviderFactory providers;
     private final NamedDomainObjectContainer<NativeImageLayer> namedLayers;
+    private final JavaLauncherProperty javaLauncher;
 
     @Override
     @Internal
@@ -232,7 +233,31 @@ public abstract class BaseNativeImageOptions implements NativeImageOptions {
      */
     @Nested
     @Optional
-    public abstract Property<JavaLauncher> getJavaLauncher();
+    public Property<JavaLauncher> getJavaLauncher() {
+        return javaLauncher;
+    }
+
+    /**
+     * Installs the plugin-provided convention launcher on the javaLauncher property.
+     * Provenance is tracked structurally by the property wrapper: consulting the convention
+     * never makes a later explicit assignment look convention-sourced. §FS-native-invocation.1.2
+     */
+    public void setJavaLauncherConvention(Provider<JavaLauncher> convention) {
+        // The supplier runs only when the property resolves its convention, never when the
+        // user assigns a value directly, and it may yield null when no launcher is available.
+        getJavaLauncher().convention(providers.provider(convention::getOrNull));
+    }
+
+    /**
+     * Returns whether the binary's javaLauncher was assigned explicitly by the user
+     * rather than supplied by the plugin-installed convention (§FS-native-invocation.1.1).
+     * Resolving this provider resolves the property, so it must be read at execution time,
+     * never during configuration, where resolving the convention can trigger toolchain
+     * detection. §FS-native-invocation.1.2
+     */
+    public Provider<Boolean> getJavaLauncherExplicit() {
+        return providers.provider(() -> getJavaLauncher().isPresent() && javaLauncher.isExplicit());
+    }
 
     /**
      * Returns the list of configuration file directories (e.g. resource-config.json, ...) which need
@@ -296,6 +321,7 @@ public abstract class BaseNativeImageOptions implements NativeImageOptions {
         this.objects = objectFactory;
         this.providers = providers;
         this.namedLayers = namedLayers;
+        this.javaLauncher = new JavaLauncherProperty(objectFactory.property(JavaLauncher.class));
     }
 
     private static Provider<Boolean> property(ProviderFactory providers, String name) {
