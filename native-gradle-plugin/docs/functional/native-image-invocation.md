@@ -26,6 +26,10 @@ configuration directories, generated resources, reachability metadata, layer opt
 conversion must come from common utilities rather than Gradle-only string handling, keeping Gradle
 aligned with [§root/FS-option-precedence](../../../docs/spec/functional/option-precedence.md#fs-option-precedence-command-line-input-and-durable-configuration-produce-one-option-state).
 
+When Gradle uses its plain console, the Native Image invocation must explicitly disable colorful
+build output. Otherwise, the `richOutput` option controls Native Image's color-enabled argument,
+adapting [§root/FS-native-builds.2](../../../docs/spec/functional/native-image-builds.md#2-command-line-construction).
+
 For a layer created from declared JARs, the command line must use those JARs as its classpath so
 the layer input remains limited to the declaration. A layer created from packages must instead
 retain the binary classpath, which supplies the classes selected by those package names.
