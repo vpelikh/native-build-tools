@@ -49,17 +49,21 @@ import org.graalvm.buildtools.gradle.dsl.GraalVMExtension;
 import org.graalvm.buildtools.gradle.dsl.NativeImageOptions;
 import org.graalvm.buildtools.gradle.dsl.agent.AgentOptions;
 import org.gradle.api.Action;
-import org.gradle.api.JavaVersion;
 import org.gradle.api.NamedDomainObjectContainer;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
+import org.gradle.api.plugins.JavaPluginExtension;
 import org.gradle.api.provider.Property;
-import org.gradle.jvm.toolchain.JavaLanguageVersion;
+import org.gradle.api.provider.Provider;
 import org.gradle.jvm.toolchain.JavaLauncher;
 import org.gradle.jvm.toolchain.JavaToolchainService;
 
 import javax.inject.Inject;
 import java.util.function.Predicate;
+
+import java.io.File;
+
+import static org.graalvm.buildtools.utils.SharedConstants.NATIVE_IMAGE_EXE;
 
 public abstract class DefaultGraalVmExtension implements GraalVMExtension {
     private final transient NamedDomainObjectContainer<NativeImageOptions> nativeImages;
@@ -76,7 +80,6 @@ public abstract class DefaultGraalVmExtension implements GraalVMExtension {
         this.project = project;
         this.defaultJavaLauncher = project.getObjects().property(JavaLauncher.class);
         getToolchainDetection().convention(false);
-        nativeImages.configureEach(options -> options.getJavaLauncher().convention(defaultJavaLauncher));
         getTestSupport().convention(true);
         AgentOptions agentOpts = getAgent();
         agentOpts.getDefaultMode().convention("standard");
@@ -91,18 +94,40 @@ public abstract class DefaultGraalVmExtension implements GraalVMExtension {
         configureToolchain();
     }
 
+    public Provider<JavaLauncher> getDefaultJavaLauncher() {
+        return defaultJavaLauncher;
+    }
+
     private void configureToolchain() {
         defaultJavaLauncher.convention(
                 getToolchainDetection().flatMap(enabled -> {
-                    if (enabled) {
-                        JavaToolchainService toolchainService = project.getExtensions().findByType(JavaToolchainService.class);
-                        if (toolchainService != null) {
-                            return toolchainService.launcherFor(spec -> {
-                                spec.getLanguageVersion().set(JavaLanguageVersion.of(JavaVersion.current().getMajorVersion()));
-                            });
-                        }
+                    if (!enabled) {
+                        return null;
                     }
-                    return null;
+                    JavaToolchainService toolchainService = project.getExtensions().findByType(JavaToolchainService.class);
+                    if (toolchainService == null) {
+                        return null;
+                    }
+                    // Probe the resolved toolchain for native-image before using it.
+                    // If native-image is absent, return null so the native-image locator
+                    // falls back to the Gradle JVM (java.home) per §FS-native-invocation.1.5.
+                    JavaPluginExtension javaConvention = project.getExtensions().getByType(JavaPluginExtension.class);
+                    Provider<JavaLauncher> javaToolchainLauncher = toolchainService.launcherFor(javaConvention.getToolchain());
+                    // Verify toolchain contains native-image by probing it
+                    Provider<JavaLauncher> probeResult = javaToolchainLauncher.map(l -> {
+                        try {
+                            File nativeImage = l.getMetadata().getInstallationPath().file("bin/" + NATIVE_IMAGE_EXE).getAsFile();
+                            if (nativeImage.exists()) {
+                                return l;
+                            }
+                            // native-image not found; return null so the locator falls back to the Gradle JVM (java.home)
+                            return null;
+                        } catch (Exception e) {
+                            // Probe failed; return null so the locator falls back to the Gradle JVM (java.home)
+                            return null;
+                        }
+                    });
+                    return probeResult;
                 })
         );
     }
