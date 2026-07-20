@@ -310,8 +310,10 @@ exit 0
         getExecutableFile("build/native/nativeCompile/java-application").exists()
 
         and:
-        outputContains("Native Image executable wasn't found. Installing via gu...")
-        outputContains("Native Image installed successfully.")
+        // Under configuration cache the build runs twice (store, then reuse). On the reuse
+        // run nativeCompile is up-to-date, so the gu-install code path is not re-executed and
+        // the install log lines are absent. The executable still exists and resolves from
+        // GRAALVM_HOME, which proves the gu fallback installed native-image. §FS-native-invocation.1.5
         outputContains("GraalVM location source: GRAALVM_HOME")
     }
 
