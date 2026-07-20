@@ -63,8 +63,6 @@ import java.util.function.Predicate;
 
 import java.io.File;
 
-import static org.graalvm.buildtools.utils.SharedConstants.NATIVE_IMAGE_EXE;
-
 public abstract class DefaultGraalVmExtension implements GraalVMExtension {
     private final transient NamedDomainObjectContainer<NativeImageOptions> nativeImages;
     private final transient NativeImagePlugin plugin;
@@ -80,6 +78,9 @@ public abstract class DefaultGraalVmExtension implements GraalVMExtension {
         this.project = project;
         this.defaultJavaLauncher = project.getObjects().property(JavaLauncher.class);
         getToolchainDetection().convention(false);
+        // Every binary exposes a javaLauncher convention so graalvmNative.binaries.main.javaLauncher
+        // is always resolvable (e.g. its metadata.languageVersion) when toolchain detection is on. §FS-native-invocation.1.5
+        nativeImages.configureEach(options -> options.getJavaLauncher().convention(defaultJavaLauncher));
         getTestSupport().convention(true);
         AgentOptions agentOpts = getAgent();
         agentOpts.getDefaultMode().convention("standard");
@@ -108,26 +109,14 @@ public abstract class DefaultGraalVmExtension implements GraalVMExtension {
                     if (toolchainService == null) {
                         return null;
                     }
-                    // Probe the resolved toolchain for native-image before using it.
-                    // If native-image is absent, return null so the native-image locator
-                    // falls back to the Gradle JVM (java.home) per §FS-native-invocation.1.5.
+                    // Resolve the toolchain launcher for the configured Java toolchain.
+                    // This keeps graalvmNative.binaries.main.javaLauncher queryable (e.g. its
+                    // metadata.languageVersion) whenever toolchain detection is enabled.
+                    // Whether the toolchain actually contains native-image is decided at build
+                    // time by NativeImageExecutableLocator, which falls back to GRAALVM_HOME
+                    // when the launcher's installation lacks it. §FS-native-invocation.1.5
                     JavaPluginExtension javaConvention = project.getExtensions().getByType(JavaPluginExtension.class);
-                    Provider<JavaLauncher> javaToolchainLauncher = toolchainService.launcherFor(javaConvention.getToolchain());
-                    // Verify toolchain contains native-image by probing it
-                    Provider<JavaLauncher> probeResult = javaToolchainLauncher.map(l -> {
-                        try {
-                            File nativeImage = l.getMetadata().getInstallationPath().file("bin/" + NATIVE_IMAGE_EXE).getAsFile();
-                            if (nativeImage.exists()) {
-                                return l;
-                            }
-                            // native-image not found; return null so the locator falls back to the Gradle JVM (java.home)
-                            return null;
-                        } catch (Exception e) {
-                            // Probe failed; return null so the locator falls back to the Gradle JVM (java.home)
-                            return null;
-                        }
-                    });
-                    return probeResult;
+                    return toolchainService.launcherFor(javaConvention.getToolchain());
                 })
         );
     }
