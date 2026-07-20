@@ -61,8 +61,6 @@ import org.gradle.jvm.toolchain.JavaToolchainService;
 import javax.inject.Inject;
 import java.util.function.Predicate;
 
-import java.io.File;
-
 public abstract class DefaultGraalVmExtension implements GraalVMExtension {
     private final transient NamedDomainObjectContainer<NativeImageOptions> nativeImages;
     private final transient NativeImagePlugin plugin;
