@@ -191,6 +191,7 @@ class JavaApplicationFunctionalTest extends AbstractFunctionalTest {
         withSample("java-application")
         buildFile << """
             graalvmNative {
+                useArgFile = true
                 binaries.all {
                     richOutput = true
                     verbose = true
@@ -205,7 +206,7 @@ class JavaApplicationFunctionalTest extends AbstractFunctionalTest {
         tasks {
             succeeded ':nativeCompile'
         }
-        outputContains expectedColorArgument
+        nativeImageInvocationContains('nativeCompile', expectedColorArgument)
 
         where:
         console | expectedColorArgument
@@ -390,6 +391,19 @@ class JavaApplicationFunctionalTest extends AbstractFunctionalTest {
         }
         outputContains "--pgo="
         outputContains "PGO: user-provided"
+    }
+
+    // This scenario uses an argument file so console-color assertions are deterministic on every OS. §FS-native-invocation.3.
+    private boolean nativeImageInvocationContains(String taskName, String expectedArgument) {
+        if (result.output.contains(expectedArgument)) {
+            return true
+        }
+        def matcher = result.output =~ /\[native-image-plugin\] Args are: \[@(.+?\.args), /
+        if (!matcher.find()) {
+            return false
+        }
+        def workingDirectory = path('build', 'native', taskName)
+        Files.readAllLines(workingDirectory.resolve(matcher.group(1)).normalize()).contains(expectedArgument)
     }
 
 }
